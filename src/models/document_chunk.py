@@ -1,22 +1,16 @@
 import uuid
 from datetime import datetime
-from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
 
 
-class MessageRole(str, Enum):
-    USER = "user"
-    ASSISTANT = "assistant"
-    SYSTEM = "system"
-
-
-class Message(Base):
-    __tablename__ = "messages"
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -24,20 +18,25 @@ class Message(Base):
         default=uuid.uuid4,
     )
 
-    conversation_id: Mapped[uuid.UUID] = mapped_column(
+    document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("conversations.id", ondelete="CASCADE"),
+        ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    role: Mapped[MessageRole] = mapped_column(
-        String(20),
+    chunk_index: Mapped[int] = mapped_column(
+        Integer,
         nullable=False,
     )
 
     content: Mapped[str] = mapped_column(
         Text,
+        nullable=False,
+    )
+
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(1536),
         nullable=False,
     )
 
@@ -47,11 +46,11 @@ class Message(Base):
         nullable=False,
     )
 
-    conversation: Mapped["Conversation"] = relationship(
-        back_populates="messages",
+    document: Mapped["Document"] = relationship(
+        back_populates="chunks",
     )
 
     citations: Mapped[list["MessageCitation"]] = relationship(
-        back_populates="message",
+        back_populates="chunk",
         cascade="all, delete-orphan",
     )
