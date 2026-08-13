@@ -1,1 +1,1 @@
-from .chat_service import ChatService
+from .chat import ChatService
