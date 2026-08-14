@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert
+from sqlalchemy import select, and_
 from src.models import Conversation
 from uuid import UUID
 
@@ -10,7 +10,10 @@ class ConversationRepository:
 
     async def get_by_id(self, con_id: UUID, user_id: UUID):
         query = select(Conversation).where(
-            Conversation.id == con_id and Conversation.user_id == user_id
+            # (Conversation.id == con_id) & (Conversation.user_id == user_id)
+            # and_((Conversation.id == con_id), (Conversation.user_id == user_id))
+            (Conversation.id == con_id),
+            (Conversation.user_id == user_id),
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()

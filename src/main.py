@@ -1,16 +1,15 @@
 from fastapi import FastAPI
-from src.api.routes import chat_router
 from src.core.exceptions import AppException
 from src.core.exception_handlers import (
     app_exception_handler,
     unhandled_exception_handler,
 )
+from src.api.routes import v1_router
+from src.core.lifespan import lifespan
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(
-        title="AI RAG API",
-    )
+    app = FastAPI(title="AI RAG API", lifespan=lifespan)
 
     app.add_exception_handler(AppException, app_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
@@ -19,7 +18,7 @@ def create_app() -> FastAPI:
     def check_api():
         return {"status": "ok"}
 
-    app.include_router(chat_router)
+    app.include_router(prefix="/api", router=v1_router)
 
     return app
 
