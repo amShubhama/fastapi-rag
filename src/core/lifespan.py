@@ -1,0 +1,26 @@
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from src.db.engine import engine
+from sqlalchemy import text
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+
+        logger.info("Database connection successful")
+
+    except Exception:
+        logging.error("Database conncetion failed")
+
+        raise
+
+    yield
+
+    await engine.dispose()
+    logger.info("Database connection pool closed")

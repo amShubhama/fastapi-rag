@@ -9,10 +9,10 @@ from src.schemas.chat import (
 )
 from uuid import UUID
 
-router = APIRouter(prefix="/chat", tags=["Chat"])
+router = APIRouter(tags=["Chat"])
 
 
-@router.post("", response_model=ChatResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/chat", response_model=ChatResponse, status_code=status.HTTP_201_CREATED)
 async def create_chat(
     req_body: ChatRequest, service: ChatService = Depends(get_chat_service)
 ):
@@ -31,7 +31,7 @@ async def get_conversations(
 
 
 @router.get(
-    "/{conversation_id}/messages",
+    "/conversations/{conversation_id}/messages",
     response_model=MessageListResponse,
     status_code=status.HTTP_200_OK,
 )
