@@ -2,7 +2,15 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,6 +72,31 @@ class Document(Base):
         default=DocumentStatus.PENDING,
     )
 
+    stored_filename: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+
+    storage_path: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    document_type: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+
+    content_hash: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    file_size: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -85,4 +118,17 @@ class Document(Base):
         back_populates="document",
         cascade="all, delete-orphan",
         order_by="DocumentChunk.chunk_index",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "name",
+            name="uq_documents_user_name",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "content_hash",
+            name="uq_documents_user_content_hash",
+        ),
     )
