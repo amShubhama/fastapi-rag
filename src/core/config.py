@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     ollama_url: str
     model: str
     user_id: str
+    redis_url: str
 
     class Config:
         env_file = ".env"

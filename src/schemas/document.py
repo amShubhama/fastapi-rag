@@ -15,6 +15,8 @@ class DocumentResponse(BaseModel):
     file_size: int | None
     created_at: datetime
     updated_at: datetime
+    processed_at: datetime | None
+    error_message: str | None
 
     model_config = ConfigDict(
         from_attributes=True,

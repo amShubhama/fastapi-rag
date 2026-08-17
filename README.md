@@ -108,3 +108,39 @@
                   │             │
                   ▼             ▼
              File Details    Error Details
+
+## Document Processing Architecture
+
+                    ┌───────────────┐
+                    │   FastAPI     │
+                    │   Upload API  │
+                    └───────┬───────┘
+                            │
+                ┌───────────┼────────────┐
+                │           │            │
+                ▼           ▼            ▼
+            PostgreSQL    Storage       Queue
+                │           │            │
+            documents       │            │
+            ingestion_jobs  │            │
+                            │            │
+                            └──────┬─────┘
+                                   │
+                                   ▼
+                              Ingestion
+                                Worker
+                                   │
+                  ┌────────────────┼─────────────────┐
+                  │                │                 │
+                  ▼                ▼                 ▼
+              Extractor         Chunker          Embedder
+                  │                │                 │
+                  └────────────────┼─────────────────┘
+                                   │
+                                   ▼
+                            document_chunks
+                                   │
+                                   ▼
+                              pgvector
+
+### API → Queue → Worker → Extract → Chunk → Embed → pgvector

@@ -2,7 +2,14 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,8 +42,18 @@ class DocumentChunk(Base):
         nullable=False,
     )
 
+    page_start: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    page_end: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
     embedding: Mapped[list[float]] = mapped_column(
-        Vector(1536),
+        Vector(384),
         nullable=False,
     )
 
@@ -53,4 +70,12 @@ class DocumentChunk(Base):
     citations: Mapped[list["MessageCitation"]] = relationship(
         back_populates="chunk",
         cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "chunk_index",
+            name="uq_document_chunks_document_index",
+        ),
     )
