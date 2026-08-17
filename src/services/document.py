@@ -23,6 +23,10 @@ from src.storage.document import DocumentStorage
 from src.validators.document import DocumentValidator
 from src.core.config import settings
 
+from src.ingestion.tasks import (
+    ingest_document,
+)
+
 user_id = settings.user_id
 
 
@@ -96,7 +100,7 @@ class DocumentService:
                 mime_type=detected_mime,
                 status=DocumentStatus.PENDING,
                 stored_filename=stored_filename,
-                storage_path=str(final_path),
+                storage_path=(self.document_storage.to_storage_path(final_path)),
                 document_type=extension.removeprefix("."),
                 content_hash=content_hash,
                 file_size=file_size,
@@ -110,6 +114,8 @@ class DocumentService:
             )
 
             await self.session.commit()
+
+            ingest_document.delay(str(document.id))
 
             return document
 

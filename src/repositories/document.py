@@ -67,3 +67,10 @@ class DocumentRepository:
         await self.session.flush()
 
         return document
+
+    async def get_by_doc_id(self, document_id: UUID):
+        result = await self.session.execute(
+            select(Document).where(Document.id == document_id)
+        )
+
+        return result.scalar_one_or_none()
