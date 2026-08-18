@@ -6,6 +6,7 @@ from src.repositories import (
     ConversationRepository,
     MessageRepository,
     DocumentRepository,
+    DocumentChunkRepository,
 )
 from src.services import ChatService
 
@@ -22,13 +23,25 @@ def get_message_repository(
     return MessageRepository(session)
 
 
+def get_document_chunk_repository(
+    session: AsyncSession = Depends(get_db),
+) -> DocumentChunkRepository:
+    return DocumentChunkRepository(session=session)
+
+
 def get_chat_service(
     session: AsyncSession = Depends(get_db),
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
+    document_chunk_repo: DocumentChunkRepository = Depends(
+        get_document_chunk_repository
+    ),
 ) -> ChatService:
     return ChatService(
-        session=session, conversation_repo=conversation_repo, message_repo=message_repo
+        session=session,
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+        document_chunk_repo=document_chunk_repo,
     )
 
 

@@ -39,3 +39,12 @@ async def get_chats(
     conversation_id: UUID, service: ChatService = Depends(get_chat_service)
 ):
     return await service.get_chats(conversation_id)
+
+
+@router.post("/chat/rag")
+async def create_chat_rag(
+    req_body: ChatRequest, service: ChatService = Depends(get_chat_service)
+):
+    return await service.create_chat_with_context(
+        query=req_body.prompt, conversation_id=req_body.conversation_id
+    )
