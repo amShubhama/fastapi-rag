@@ -1,7 +1,11 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.repositories import ConversationRepository, MessageRepository
+from src.repositories import (
+    ConversationRepository,
+    MessageRepository,
+    DocumentChunkRepository,
+)
 from src.models import MessageRole
 from .llm import LLMService
 from src.core.config import settings
@@ -18,7 +22,37 @@ SYSTEM_PROMPT = """
                 Do not make up information.
             """
 
+CONTEXT_SYSTEM_PROMPT = """
+You are a helpful AI assistant.
+
+Answer the user's question using the provided context.
+
+Rules:
+- Use the provided context as the primary source of truth.
+- Do not make up information.
+- If the answer is not present in the context, say:
+  "I don't have enough information in the provided documents."
+- Answer clearly and accurately in max 50 words.
+"""
+
+
+def build_context(chunks) -> str:
+    """
+    Build the context passed to the LLM from the
+    most relevant document chunks.
+    """
+
+    if not chunks:
+        return "No relevant context was found."
+
+    return "\n\n".join(
+        f"[Document Chunk {index}]\n{chunk.content}"
+        for index, chunk in enumerate(chunks, start=1)
+    )
+
+
 user_id: UUID = UUID(settings.user_id)
+from src.ingestion.tasks import embeddings
 
 
 class ChatService:
@@ -27,10 +61,12 @@ class ChatService:
         session: AsyncSession,
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
+        document_chunk_repo: DocumentChunkRepository,
     ):
         self.session = session
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
+        self.document_chunk_repo = document_chunk_repo
 
     async def create_chat(
         self,
@@ -111,3 +147,38 @@ class ChatService:
         messages = await self.message_repo.get_by_conversation_id(conversation.id)
 
         return {"conversation": conversation, "messages": messages}
+
+    async def create_chat_with_context(self, conversation_id: UUID | None, query: str):
+        query_embedding = embeddings.embed_query(query)
+        chunks = await self.document_chunk_repo.similarity_search(
+            user_id=user_id,
+            query_embedding=query_embedding,
+            limit=5,
+        )
+
+        context = build_context(chunks)
+        chat_messages = [
+            {
+                "role": "system",
+                "content": CONTEXT_SYSTEM_PROMPT,
+            }
+        ]
+        chat_messages.append(
+            {
+                "role": MessageRole.USER,
+                "content": f"""
+                    Context:
+                    --------------------
+                    {context}
+                    --------------------
+
+                    Question:
+                    {query}
+                """,
+            }
+        )
+        llm_response = await llm_service.generate(messages=chat_messages)
+        return {
+            "llm_response": llm_response,
+            "retrieved_chunks": chunks,
+        }

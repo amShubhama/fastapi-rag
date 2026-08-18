@@ -4,8 +4,8 @@ from src.core.config import settings
 
 celery_app = Celery(
     "document_worker",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=settings.redis_url + "/0",
+    backend=settings.redis_url + "/1",
 )
 
 celery_app.conf.update(

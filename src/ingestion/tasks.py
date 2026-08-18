@@ -3,7 +3,7 @@ from uuid import UUID
 
 from src.ingestion.chunking.text import DocumentChunker
 from src.ingestion.embeddings.huggingface import EmbeddingService
-from src.ingestion.loaders.pdf import PDFLoader
+from src.ingestion.loaders.langchain_document import DocumentLoader
 from src.ingestion.service import DocumentIngestionService
 from src.storage.document import DocumentStorage
 from src.worker.celery_app import celery_app
@@ -35,7 +35,7 @@ def ingest_document(
 
         storage = DocumentStorage()
 
-        loader = PDFLoader()
+        loader = DocumentLoader()
 
         chunker = DocumentChunker(
             chunk_size=1000,

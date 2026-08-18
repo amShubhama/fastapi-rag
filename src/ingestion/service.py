@@ -10,7 +10,7 @@ from src.models import (
     DocumentStatus,
 )
 from src.storage.document import DocumentStorage
-from src.ingestion.loaders.pdf import PDFLoader
+from src.ingestion.loaders.langchain_document import DocumentLoader
 from src.ingestion.chunking.text import DocumentChunker
 from src.ingestion.embeddings.huggingface import (
     EmbeddingService,
@@ -42,7 +42,7 @@ class DocumentIngestionService:
         self,
         session: AsyncSession,
         document_storage: DocumentStorage,
-        document_loader: PDFLoader,
+        document_loader: DocumentLoader,
         document_chunker: DocumentChunker,
         embedding_service: EmbeddingService,
         document_repo: DocumentRepository,
@@ -86,7 +86,9 @@ class DocumentIngestionService:
                 raise ValueError(f"Document path is not a file: {file_path}")
 
             # extract document
-            pages = self.document_loader.load(str(file_path))
+            pages = self.document_loader.load(
+                file_path=str(file_path), document_type=document.document_type
+            )
 
             if not pages:
                 raise ValueError("No content could be extracted from the document.")
@@ -181,9 +183,7 @@ class DocumentIngestionService:
         if not document.document_type:
             raise ValueError("Document has no document type.")
 
-        supported_types = {
-            "pdf",
-        }
+        supported_types = {"pdf", "txt"}
 
         if document.document_type.lower() not in supported_types:
             raise ValueError(f"Unsupported document type: {document.document_type}")
