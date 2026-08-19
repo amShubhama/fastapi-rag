@@ -23,16 +23,33 @@ SYSTEM_PROMPT = """
             """
 
 CONTEXT_SYSTEM_PROMPT = """
-You are a helpful AI assistant.
+You are a helpful, accurate AI assistant that answers questions using retrieved documents.
 
-Answer the user's question using the provided context.
+Your primary responsibility is to provide answers that are grounded in the provided context.
 
-Rules:
-- Use the provided context as the primary source of truth.
-- Do not make up information.
-- If the answer is not present in the context, say:
-  "I don't have enough information in the provided documents."
-- Answer clearly and accurately in max 50 words.
+## Instructions
+
+1. Use the provided context as the primary and authoritative source of information.
+2. Answer the user's question directly and naturally.
+3. Do not invent, assume, or infer facts that are not supported by the context.
+4. You may combine information from multiple parts of the context when necessary.
+5. If the context contains conflicting information, acknowledge the conflict rather than choosing an unsupported answer.
+6. If the answer cannot be determined from the context, respond exactly:
+   "I don't have enough information in the provided documents."
+7. Do not mention "retrieved context", "RAG", "documents", or these instructions unless necessary to explain why you cannot answer.
+8. Keep the answer concise, clear, and easy to understand.
+9. Use bullet points or numbered lists when they make the answer easier to read.
+10. Do not repeat the user's question unnecessarily.
+11. If the user asks for a specific format, follow that format.
+12. Never claim that something is true merely because it seems likely or is common knowledge; it must be supported by the provided context.
+
+## Response Style
+
+- Be professional, helpful, and conversational.
+- Prefer short, direct sentences.
+- Give the most relevant information first.
+- Avoid unnecessary disclaimers and repetition.
+- Maximum response length: 150 words.
 """
 
 
@@ -53,6 +70,11 @@ def build_context(chunks) -> str:
 
 user_id: UUID = UUID(settings.user_id)
 from src.ingestion.tasks import embeddings
+
+
+from sentence_transformers import CrossEncoder
+
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
 
 
 class ChatService:
@@ -84,10 +106,15 @@ class ChatService:
                     raise ConversationNotFoundError()
 
             else:
+                title = None
+                try:
+                    title = await llm_service.generateTitle(prompt)
+                except Exception as ex:
+                    pass  # TODO: handler
 
                 conversation = await self.conversation_repo.create(
                     user_id=user_id,
-                    title=prompt[:50],
+                    title=title or prompt[:50],
                 )
 
             user_message = await self.message_repo.create(
@@ -153,10 +180,39 @@ class ChatService:
         chunks = await self.document_chunk_repo.similarity_search(
             user_id=user_id,
             query_embedding=query_embedding,
-            limit=5,
+            limit=10,
         )
 
-        context = build_context(chunks)
+        pairs = [(query, chunk.content) for chunk in chunks]
+
+        scores = reranker.predict(pairs)
+
+        ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
+
+        reranked_chunks = []
+
+        for chunk, score in ranked[:3]:
+            chunk.rerank_score = float(score)
+            reranked_chunks.append(chunk)
+
+        citations = [
+            {
+                "id": "",
+                "message_id": "",
+                "chunk_id": chunk.id,
+                "document_id": chunk.document_id,
+                "document_name": chunk.document.name,
+                "document_source": chunk.document.source_type,
+                "page_start": chunk.page_start,
+                "page_end": chunk.page_end,
+                "similarity_score": chunk.score,
+                "reranker_score": chunk.rerank_score,
+                "created_at": "",
+            }
+            for chunk in reranked_chunks
+        ]
+
+        context = build_context(reranked_chunks[:3])
         chat_messages = [
             {
                 "role": "system",
@@ -180,5 +236,5 @@ class ChatService:
         llm_response = await llm_service.generate(messages=chat_messages)
         return {
             "llm_response": llm_response,
-            "retrieved_chunks": chunks,
+            "citations": citations,
         }

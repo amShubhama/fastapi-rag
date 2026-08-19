@@ -26,6 +26,8 @@ class ConversationRepository:
 
     async def get_by_user_id(self, user_id: UUID):
         result = await self.session.execute(
-            select(Conversation).where(Conversation.user_id == user_id)
+            select(Conversation)
+            .where(Conversation.user_id == user_id)
+            .order_by(Conversation.created_at.desc())
         )
         return result.scalars().all()

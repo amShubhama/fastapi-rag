@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.models import DocumentChunk, Document, DocumentStatus
 
@@ -15,7 +16,7 @@ class DocumentChunkRepository:
         user_id: UUID,
         query_embedding: list[float],
         limit: int = 5,
-    ) -> list[tuple[DocumentChunk, float]]:
+    ) -> list[dict]:
 
         distance = DocumentChunk.embedding.cosine_distance(query_embedding).label(
             "distance"
@@ -24,6 +25,7 @@ class DocumentChunkRepository:
         result = await self.session.execute(
             select(DocumentChunk, distance)
             .join(DocumentChunk.document)
+            .options(selectinload(DocumentChunk.document))
             .where(
                 Document.user_id == user_id,
                 Document.status == DocumentStatus.COMPLETED,
