@@ -38,3 +38,15 @@ class ConversationListResponse(BaseModel):
 class MessageListResponse(BaseModel):
     conversation: ConversationResponse
     messages: list[MessageResponse]
+
+
+class CitationResponse(BaseModel):
+    id: uuid.UUID
+    message_id: uuid.UUID
+    document_id: uuid.UUID
+    document_name: str
+    document_source: str
+    page_start: int | None
+    page_end: int | None
+    score: float
+    created_at: datetime

@@ -144,3 +144,37 @@
                               pgvector
 
 ### API → Queue → Worker → Extract → Chunk → Embed → pgvector
+
+## RAG Retrieval Pipeline
+
+                    Current Query
+                         │
+                         ▼
+                Conversation Memory
+                  (summary + recent) (later)
+                         │
+                         ▼
+                   Query Rewrite (later)
+                         │
+                         ▼
+                  Vector Retrieval
+                         │
+                         ▼
+                    Reranker
+                         │
+                         ▼
+                 Top 3-5 chunks
+                         │
+                         ▼
+                      LLM
+                         │
+                         ▼
+                 Persistence Lock (later)
+                         │
+              ┌──────────┴──────────┐
+              ▼                     ▼
+          USER message          ASSISTANT
+                                    │
+                                 citations
+                                    │
+                                  COMMIT
