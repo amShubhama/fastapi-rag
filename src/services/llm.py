@@ -1,4 +1,5 @@
 import httpx
+from src.static.prompts import TITLE_SYSTEM_PROMPT
 
 
 class LLMService:
@@ -17,6 +18,7 @@ class LLMService:
             "model": model or self.model,
             "messages": messages,
             "stream": False,
+            "keep_alive": "10m",
         }
 
         async with httpx.AsyncClient(timeout=None) as client:
@@ -31,43 +33,26 @@ class LLMService:
 
             return data["message"]["content"]
 
-    async def generateTitle(self, query: str):
-        query = query[:500]
-
-        prompt = f"""
-        Generate a concise, meaningful title for this conversation.
-
-        User's message:
-        {query}
-
-        The title should represent the broader topic, theme, or intent of the conversation,
-        not simply repeat or paraphrase the user's question.
-
-        Think of the title as a name for the conversation that would still make sense
-        if the user continues discussing related ideas, questions, and topics later.
-
-        Rules:
-        - Must be in English
-        - 2 to 5 words
-        - Maximum 40 characters
-        - Capture the broader topic or theme
-        - Make it natural and human-friendly
-        - Prefer a conceptual topic over a specific question
-        - Do not copy or paraphrase the user's query
-        - Avoid generic titles like "New Conversation", "Chat", or "Question"
-        - Return only the title
-        """
+    async def generateTitle(
+        self,
+        query: str,
+    ) -> str:
 
         payload = {
             "model": self.model,
             "messages": [
                 {
+                    "role": "system",
+                    "content": TITLE_SYSTEM_PROMPT,
+                },
+                {
                     "role": "user",
-                    "content": prompt,
-                }
+                    "content": query,
+                },
             ],
             "stream": False,
             "think": False,
+            "keep_alive": "10m",
             "options": {
                 "temperature": 0,
                 "num_predict": 10,
