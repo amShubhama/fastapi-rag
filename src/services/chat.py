@@ -15,11 +15,12 @@ from src.static.prompts import RAG_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT
 from sentence_transformers import CrossEncoder
 from src.schemas.chat import CitationResponse
 from src.helpers.helper import build_query_with_context, build_context
-from src.ingestion.tasks import embeddings
+from src.ingestion.tasks import get_embedding_service
 
 user_id: UUID = UUID(settings.user_id)
 llm_service = LLMService(ollama_url=settings.ollama_url, model=settings.model)
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
+embeddings = get_embedding_service()
 
 
 class ChatService:

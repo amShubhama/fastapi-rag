@@ -1,21 +1,19 @@
 from datetime import datetime, timezone
+import logging
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import (
-    Document,
-    DocumentChunk,
-    DocumentStatus,
-)
-from src.storage.document import DocumentStorage
-from src.ingestion.loaders.langchain_document import DocumentLoader
 from src.ingestion.chunking.text import DocumentChunker
-from src.ingestion.embeddings.huggingface import (
-    EmbeddingService,
-)
+from src.ingestion.embeddings.huggingface import EmbeddingService
+from src.ingestion.loaders.langchain_document import DocumentLoader
+from src.models import Document, DocumentChunk, DocumentStatus
 from src.repositories import DocumentRepository
+from src.storage.document import DocumentStorage
+
+logger = logging.getLogger(__name__)
+import asyncio
 
 
 class DocumentIngestionService:
@@ -68,10 +66,11 @@ class DocumentIngestionService:
         if document.status == DocumentStatus.COMPLETED:
             return document
 
-        document.status = DocumentStatus.PROCESSING
-        document.error_message = None
-
-        await self.session.commit()
+        # Update document status to processing
+        if document.status != DocumentStatus.PROCESSING:
+            document.status = DocumentStatus.PROCESSING
+            document.error_message = None
+            await self.session.commit()
 
         try:
 
@@ -79,32 +78,24 @@ class DocumentIngestionService:
 
             file_path = self.document_storage.resolve(document.storage_path)
 
-            if not file_path.exists():
-                raise FileNotFoundError(f"Document file does not exist: {file_path}")
+            if not file_path.exists() or not file_path.is_file():
+                raise FileNotFoundError(f"Document file not found at path: {file_path}")
 
-            if not file_path.is_file():
-                raise ValueError(f"Document path is not a file: {file_path}")
+            logger.info(f"Loading document content for ID: {document_id}")
 
-            # extract document
-            pages = self.document_loader.load(
-                file_path=str(file_path), document_type=document.document_type
+            pages = await asyncio.to_thread(
+                self.document_loader.load,
+                file_path=str(file_path),
+                document_type=document.document_type,
             )
 
-            if not pages:
-                raise ValueError("No content could be extracted from the document.")
-
-            # remove empty pages
-            pages = [
-                page
-                for page in pages
-                if page.page_content and page.page_content.strip()
-            ]
+            # Filter empty pages
+            pages = [p for p in pages if p.page_content and p.page_content.strip()]
 
             if not pages:
-                raise ValueError("Document contains no extractable text.")
+                raise ValueError("Document contains no extractable text")
 
-            # split into chunks
-            chunks = self.document_chunker.split(pages)
+            chunks = await asyncio.to_thread(self.document_chunker.split, pages)
 
             chunks = [
                 chunk
@@ -117,8 +108,9 @@ class DocumentIngestionService:
 
             texts = [chunk.page_content for chunk in chunks]
 
-            # generate embeddings
-            embeddings = self.embedding_service.embed_documents(texts)
+            embeddings = await asyncio.to_thread(
+                self.embedding_service.embed_documents, texts
+            )
 
             if len(embeddings) != len(chunks):
                 raise ValueError("Embedding count does not match chunk count.")
@@ -156,20 +148,29 @@ class DocumentIngestionService:
             document.processed_at = datetime.now(timezone.utc)
 
             await self.session.commit()
-
+            logger.info(
+                f"Successfully finished ingestion for document ID: {document_id}"
+            )
             return document
 
         except Exception as exc:
+            logger.error(
+                f"Ingestion failed for document {document_id}: {exc}", exc_info=True
+            )
             await self.session.rollback()
 
-            document = await self.document_repo.get_by_doc_id(
-                document_id=document_id,
-            )
-
-            if document is not None:
-                document.status = DocumentStatus.FAILED
-                document.error_message = self._format_error(exc)
-                await self.session.commit()
+            try:
+                document = await self.document_repo.get_by_doc_id(
+                    document_id=document_id
+                )
+                if document:
+                    document.status = DocumentStatus.FAILED
+                    document.error_message = self._format_error(exc)
+                    await self.session.commit()
+            except Exception as inner_exc:
+                logger.critical(
+                    f"Failed to persist error state for doc {document_id}: {inner_exc}"
+                )
 
             raise
 
@@ -198,9 +199,7 @@ class DocumentIngestionService:
             return None
 
         try:
-            # PyMuPDF/LangChain page numbers are generally zero-based.
             return int(page) + 1
-
         except (TypeError, ValueError):
             return None
 
