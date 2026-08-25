@@ -115,8 +115,6 @@ class DocumentService:
 
             await self.session.commit()
 
-            ingest_document.delay(str(document.id))
-
             return document
 
         except IntegrityError as exc:

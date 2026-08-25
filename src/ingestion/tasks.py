@@ -1,18 +1,30 @@
 import asyncio
+import logging
 from uuid import UUID
 
+from celery.schedules import crontab
+from sqlalchemy import select
+
+from src.db.session import sessionLocal
 from src.ingestion.chunking.text import DocumentChunker
 from src.ingestion.embeddings.huggingface import EmbeddingService
 from src.ingestion.loaders.langchain_document import DocumentLoader
 from src.ingestion.service import DocumentIngestionService
+from src.models import Document, DocumentStatus
+from src.repositories import DocumentRepository
 from src.storage.document import DocumentStorage
 from src.worker.celery_app import celery_app
-from src.db.session import sessionLocal
-from src.repositories import DocumentRepository
 
-embeddings = EmbeddingService(
-    model_name="BAAI/bge-small-en-v1.5",
-)
+logger = logging.getLogger(__name__)
+
+_embeddings_service: EmbeddingService | None = None
+
+
+def get_embedding_service() -> EmbeddingService:
+    global _embeddings_service
+    if _embeddings_service is None:
+        _embeddings_service = EmbeddingService(model_name="BAAI/bge-small-en-v1.5")
+    return _embeddings_service
 
 
 @celery_app.task(
@@ -30,9 +42,9 @@ embeddings = EmbeddingService(
 def ingest_document(
     self,
     document_id: str,
-):
-    async def run():
+) -> None:
 
+    async def run() -> None:
         storage = DocumentStorage()
 
         loader = DocumentLoader()
@@ -41,6 +53,8 @@ def ingest_document(
             chunk_size=1000,
             chunk_overlap=150,
         )
+
+        embeddings = get_embedding_service()
 
         async with sessionLocal() as session:
 
@@ -55,4 +69,48 @@ def ingest_document(
 
             await service.ingest(UUID(document_id))
 
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except Exception as exc:
+        logger.error(f"Task retry triggered for document {document_id} due to: {exc}")
+        raise self.retry(exc=exc)
+
+
+celery_app.conf.beat_schedule = {
+    "ingest-document-publisher-beat": {
+        "task": "documents.ingest_publisher",
+        "schedule": crontab(minute="*/1"),
+    }
+}
+
+
+@celery_app.task(name="documents.ingest_publisher", acks_late=True)
+def ingest_document_publisher() -> str:
+
+    async def run() -> str:
+        async with sessionLocal() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(Document)
+                    .where(Document.status == DocumentStatus.PENDING)
+                    .limit(5)
+                    .with_for_update(skip_locked=True)
+                )
+
+                documents = result.scalars().all()
+                if not documents:
+                    return "No pending documents found for ingestion"
+
+                for document in documents:
+                    document.status = DocumentStatus.PROCESSING
+                    session.add(document)
+
+            for document in documents:
+                ingest_document.delay(str(document.id))
+                logger.info(
+                    f"Dispatched for ingestion -> doc_id: {document.id}, doc_name: {document.name}"
+                )
+
+        return f"Successfully dispatched {len(documents)} documents"
+
+    return asyncio.run(run())

@@ -51,7 +51,7 @@
                                       ▼
                                Upload Success
 
-## Multiple File Upload Architecture
+## Multiple File Upload Architecture (later)
 
                          POST /documents
                                │
@@ -109,41 +109,89 @@
                   ▼             ▼
              File Details    Error Details
 
+## Outbox Architecture
+
+                    PostgreSQL
+                        │
+                        │
+               documents (outbox)
+                        │
+                        ▼
+                   Celery Beat
+                every 1-5 minutes
+                        │
+                        ▼
+              publish_outbox_events
+                        │
+                        ▼
+                      Redis
+                        │
+                        ▼
+                 Celery Worker
+                        │
+                        ▼
+                ingest_document
+
 ## Document Processing Architecture
 
-                    ┌───────────────┐
-                    │   FastAPI     │
-                    │   Upload API  │
-                    └───────┬───────┘
-                            │
-                ┌───────────┼────────────┐
-                │           │            │
-                ▼           ▼            ▼
-            PostgreSQL    Storage       Queue
-                │           │            │
-            documents       │            │
-            ingestion_jobs  │            │
-                            │            │
-                            └──────┬─────┘
-                                   │
-                                   ▼
-                              Ingestion
-                                Worker
-                                   │
-                  ┌────────────────┼─────────────────┐
-                  │                │                 │
-                  ▼                ▼                 ▼
-              Extractor         Chunker          Embedder
-                  │                │                 │
-                  └────────────────┼─────────────────┘
-                                   │
-                                   ▼
-                            document_chunks
-                                   │
-                                   ▼
-                              pgvector
-
-### API → Queue → Worker → Extract → Chunk → Embed → pgvector
+                    ┌──────────────────┐
+                    │       API        │
+                    │  Upload Document │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │    PostgreSQL    │
+                    │                  │
+                    │    documents     │
+                    │ ingestion_jobs   │ (later)
+                    │                  │
+                    │ status = PENDING │
+                    └────────┬─────────┘
+                             │
+                             │ Every 1 minute
+                             ▼
+                    ┌──────────────────┐
+                    │    Celery Beat   │
+                    │    Scheduler     │
+                    └────────┬─────────┘
+                             │
+                             │ fetch pending jobs
+                             ▼
+                    ┌──────────────────┐
+                    │  Publisher Task  │
+                    │  / Dispatcher    │
+                    └────────┬─────────┘
+                             │
+                             │ enqueue job
+                             ▼
+                    ┌──────────────────┐
+                    │   Celery Queue   │
+                    │       Redis      │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │ Ingestion Worker │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+              ▼              ▼              ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────┐
+        │ Extractor│ → │  Chunker │ → │  Embedder│
+        └──────────┘   └──────────┘   └─────┬────┘
+                                            │
+                                            ▼
+                                   ┌─────────────────┐
+                                   │ document_chunks │
+                                   │   + embedding   │
+                                   └────────┬────────┘
+                                            │
+                                            ▼
+                                   ┌─────────────────┐
+                                   │     pgvector    │
+                                   └─────────────────┘
 
 ## RAG Retrieval Pipeline
 
