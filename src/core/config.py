@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model: str
     user_id: str
     redis_url: str
+    cors_allowed_origins: list[str]
 
     class Config:
         env_file = ".env"

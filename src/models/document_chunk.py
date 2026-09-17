@@ -9,8 +9,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    Computed,
+    Index,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.base import Base
@@ -57,6 +59,14 @@ class DocumentChunk(Base):
         nullable=False,
     )
 
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "to_tsvector('english', coalesce(content, ''))",
+            persisted=True,
+        ),
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -77,5 +87,10 @@ class DocumentChunk(Base):
             "document_id",
             "chunk_index",
             name="uq_document_chunks_document_index",
+        ),
+        Index(
+            "ix_document_chunks_search_vector",
+            "search_vector",
+            postgresql_using="gin",
         ),
     )
