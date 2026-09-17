@@ -6,7 +6,7 @@ from src.repositories import (
     MessageRepository,
     DocumentChunkRepository,
 )
-from src.models import MessageRole, MessageCitation
+from src.models import MessageRole, MessageCitation, DocumentChunk
 from .llm import LLMService
 from src.core.config import settings
 from uuid import UUID
@@ -16,11 +16,35 @@ from sentence_transformers import CrossEncoder
 from src.schemas.chat import CitationResponse
 from src.helpers.helper import build_query_with_context, build_context
 from src.ingestion.tasks import get_embedding_service
+import asyncio
 
 user_id: UUID = UUID(settings.user_id)
 llm_service = LLMService(ollama_url=settings.ollama_url, model=settings.model)
 reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
 embeddings = get_embedding_service()
+
+
+def reciprocal_rank_fusion(
+    result_lists: list[list[DocumentChunk]],
+    k: int = 60,
+) -> list[DocumentChunk]:
+
+    scores: dict[UUID, float] = {}
+    documents: dict[UUID, DocumentChunk] = {}
+
+    for results in result_lists:
+        for rank, chunk in enumerate(results, start=1):
+            chunk_id = chunk.id
+
+            documents[chunk_id] = chunk
+
+            scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
+
+    return sorted(
+        documents.values(),
+        key=lambda chunk: scores[chunk.id],
+        reverse=True,
+    )
 
 
 class ChatService:
@@ -151,19 +175,52 @@ class ChatService:
             # Get the previous messages
             messages = await self.message_repo.get_by_conversation_id(conversation.id)
 
-            query_embedding = embeddings.embed_query(query)
+            query_embedding = await asyncio.to_thread(embeddings.embed_query, query)
 
-            chunks = await self.document_chunk_repo.similarity_search(
+            vector_chunks = await self.document_chunk_repo.similarity_search(
                 user_id=user_id,
                 query_embedding=query_embedding,
-                limit=20,
+                limit=30,
             )
 
-            pairs = [(query, chunk.content) for chunk in chunks]
+            keyword_chunks = await self.document_chunk_repo.keyword_search(
+                user_id=user_id,
+                query=query,
+                limit=30,
+            )
 
-            scores = reranker.predict(pairs)
+            hybrid_chunks = reciprocal_rank_fusion([vector_chunks, keyword_chunks])
 
-            ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
+            candidates = hybrid_chunks[:30]
+
+            pairs = [(query, chunk.content) for chunk in candidates]
+
+            scores = await asyncio.to_thread(reranker.predict, pairs)
+
+            ranked = sorted(
+                zip(candidates, scores),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            RERANK_SCORE_GAP = 4.0
+            MAX_CONTEXT_CHUNKS = 5
+
+            ranked = sorted(
+                zip(candidates, scores),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            if ranked:
+                best_score = ranked[0][1]
+                threshold = best_score - RERANK_SCORE_GAP
+
+                top_ranked = [
+                    (chunk, score) for chunk, score in ranked if score >= threshold
+                ][:MAX_CONTEXT_CHUNKS]
+            else:
+                top_ranked = []
 
             chat_messages = [
                 {
@@ -181,7 +238,7 @@ class ChatService:
                     }
                 )
 
-            context = build_context(ranked[:5])
+            context = build_context(top_ranked)
             query_with_context = build_query_with_context(query, context)
 
             chat_messages.append(
@@ -216,7 +273,7 @@ class ChatService:
                     chunk=chunk,
                     score=score,
                 )
-                for chunk, score in ranked[:5]
+                for chunk, score in top_ranked
             ]
 
             self.session.add_all(citations)
