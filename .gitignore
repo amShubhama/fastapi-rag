@@ -1,8 +1,11 @@
 __pycache__/
 ./venv
-.env
+.env*
+!.env.example
 /storage
 
 # Celery
 celerybeat-schedule
 celerybeat-schedule-*
+
+/docs

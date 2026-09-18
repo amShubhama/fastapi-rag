@@ -89,6 +89,14 @@ class DocumentChunk(Base):
             name="uq_document_chunks_document_index",
         ),
         Index(
+            "ix_document_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={
+                "embedding": "vector_cosine_ops",
+            },
+        ),
+        Index(
             "ix_document_chunks_search_vector",
             "search_vector",
             postgresql_using="gin",

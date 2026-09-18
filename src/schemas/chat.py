@@ -1,14 +1,24 @@
 import uuid
 
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from src.models import MessageRole
 
 
 class ChatRequest(BaseModel):
     conversation_id: uuid.UUID | None = None
-    prompt: str
+    prompt: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, value: str):
+        value = value.strip()
+
+        if not value:
+            raise ValueError("prompt must not be empty")
+
+        return value
 
 
 class MessageResponse(BaseModel):

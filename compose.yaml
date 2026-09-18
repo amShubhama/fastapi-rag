@@ -1,0 +1,118 @@
+name: rag-core
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rag-db
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7
+    container_name: rag-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag-llm
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  rag-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rag-backend:${GIT_COMMIT:-latest}
+    container_name: rag-api-server
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - document_storage:/app/storage
+    command:
+      ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test:
+        ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')\""]
+      interval: 100s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  rag-worker:
+    image: rag-backend:${GIT_COMMIT:-latest}
+    container_name: rag-task-worker
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - document_storage:/app/storage
+    command:
+      ["celery", "-A", "src.worker.celery_app", "worker", "--loglevel=INFO", "--pool=solo"]
+
+  rag-beat:
+    image: rag-backend:${GIT_COMMIT:-latest}
+    container_name: rag-beat-scheduler
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - document_storage:/app/storage
+    command:
+      ["celery", "-A", "src.worker.celery_app", "beat", "--loglevel=INFO"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama:
+    external: true
+  document_storage:
