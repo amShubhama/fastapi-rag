@@ -79,7 +79,7 @@ def ingest_document(
 celery_app.conf.beat_schedule = {
     "ingest-document-publisher-beat": {
         "task": "documents.ingest_publisher",
-        "schedule": crontab(minute="*/1"),
+        "schedule": crontab(minute="*/2"),
     }
 }
 
