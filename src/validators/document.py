@@ -25,6 +25,7 @@ class DocumentValidator:
         ".docx": {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/zip",
+            "application/octet-stream",
         },
         ".txt": {
             "text/plain",

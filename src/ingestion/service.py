@@ -184,7 +184,7 @@ class DocumentIngestionService:
         if not document.document_type:
             raise ValueError("Document has no document type.")
 
-        supported_types = {"pdf", "txt"}
+        supported_types = {"pdf", "txt", "docx", "doc"}
 
         if document.document_type.lower() not in supported_types:
             raise ValueError(f"Unsupported document type: {document.document_type}")
